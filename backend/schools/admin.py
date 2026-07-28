@@ -1,3 +1,6 @@
 from django.contrib import admin
+from .models import SchoolConfig
 
-# Register your models here.
+@admin.register(SchoolConfig)
+class SchoolConfigAdmin(admin.ModelAdmin):
+    list_display = ('name', 'grading_scale')
