@@ -1,0 +1,33 @@
+# Ignore all markdown files
+*.md
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+venv/
+env/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Node
+node_modules/
+dist/
+build/
+.npm
+
+# Docker
+.docker/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
