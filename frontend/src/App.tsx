@@ -5,6 +5,10 @@ import Layout from './components/Layout/Layout';
 import Login from './pages/Login';
 import Home from './pages/Dashboard/Home';
 import Users from './pages/Dashboard/Users';
+import Students from './pages/Dashboard/Students';
+import Guardians from './pages/Dashboard/Guardians';
+import Attendance from './pages/Dashboard/Attendance';
+import AttendanceHistory from './pages/Dashboard/AttendanceHistory';
 import Academics from './pages/Dashboard/Academics';
 import Settings from './pages/Dashboard/Settings';
 
@@ -24,6 +28,10 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+          <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
+          <Route path="/guardians" element={<ProtectedRoute><Guardians /></ProtectedRoute>} />
+          <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
+          <Route path="/attendance-history" element={<ProtectedRoute><AttendanceHistory /></ProtectedRoute>} />
           <Route path="/academics" element={<ProtectedRoute><Academics /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         </Routes>

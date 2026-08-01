@@ -1,5 +1,4 @@
 import React, { InputHTMLAttributes } from 'react';
-import './Input.css';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -8,13 +7,13 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 const Input: React.FC<InputProps> = ({ label, error, className = '', ...props }) => {
   return (
-    <div className={`input-group ${className}`}>
-      {label && <label className="input-label">{label}</label>}
+    <div className="flex flex-col w-full mb-4">
+      {label && <label className="mb-1.5 text-sm font-medium text-foreground">{label}</label>}
       <input
-        className={`input-field ${error ? 'has-error' : ''}`}
+        className={`flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-destructive focus-visible:ring-destructive' : ''} ${className}`}
         {...props}
       />
-      {error && <span className="input-error">{error}</span>}
+      {error && <span className="mt-1 text-xs text-destructive">{error}</span>}
     </div>
   );
 };

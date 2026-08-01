@@ -3,6 +3,7 @@ import api from '../../api/axios';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import Input from '../../components/ui/Input';
 import { Upload, Plus } from 'lucide-react';
 
 interface User {
@@ -14,19 +15,26 @@ interface User {
   role: string;
 }
 
-const roleColors: Record<string, { bg: string; color: string }> = {
-  ADMIN: { bg: '#dc2626', color: '#ffffff' },
-  TEACHER: { bg: '#000000', color: '#ffffff' },
-  PARENT: { bg: '#f0f0f0', color: '#000000' },
-  STUDENT: { bg: '#fef2f2', color: '#dc2626' },
+const roleStyles: Record<string, string> = {
+  ADMIN: "bg-primary text-primary-foreground",
+  TEACHER: "bg-secondary text-secondary-foreground",
+  PARENT: "bg-accent text-accent-foreground",
+  STUDENT: "bg-muted text-muted-foreground",
 };
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{message?: string, errors?: string[]}>({});
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const [newUser, setNewUser] = useState({
+    username: '', email: '', first_name: '', last_name: '', role: 'STUDENT', password: '', phone_number: ''
+  });
 
   const fetchUsers = async () => {
     try {
@@ -49,13 +57,10 @@ const Users: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file) return;
-    
     setIsUploading(true);
     setUploadStatus({});
-    
     const formData = new FormData();
     formData.append('file', file);
-    
     try {
       const response = await api.post('/users/bulk_upload/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -63,35 +68,58 @@ const Users: React.FC = () => {
       setUploadStatus(response.data);
       fetchUsers();
     } catch (error: any) {
-      setUploadStatus({
-        errors: error.response?.data?.errors || [error.message]
-      });
+      setUploadStatus({ errors: error.response?.data?.errors || [error.message] });
     } finally {
       setIsUploading(false);
     }
   };
 
+  const handleAddUser = async () => {
+    if (!newUser.username || !newUser.password) {
+      setFormError('Username and password are required.');
+      return;
+    }
+    setIsSaving(true);
+    setFormError('');
+    try {
+      await api.post('/users/', newUser);
+      setIsAddModalOpen(false);
+      setNewUser({ username: '', email: '', first_name: '', last_name: '', role: 'STUDENT', password: '', phone_number: '' });
+      fetchUsers();
+    } catch (error: any) {
+      const data = error.response?.data;
+      if (data) {
+        const msgs = Object.values(data).flat().join(' ');
+        setFormError(msgs);
+      } else {
+        setFormError('Failed to create user.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const getRoleBadge = (role: string) => {
-    const style = roleColors[role] || { bg: '#f0f0f0', color: '#000000' };
+    const style = roleStyles[role] || "bg-muted text-muted-foreground";
     return (
-      <span className="badge" style={{ backgroundColor: style.bg, color: style.color }}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${style}`}>
         {role}
       </span>
     );
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex-between" style={{ marginBottom: '1.5rem' }}>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1>Users</h1>
-          <p>{users.length} total users</p>
+          <h1 className="text-2xl font-bold tracking-tight">Users</h1>
+          <p className="text-sm text-muted-foreground">{users.length} total users</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Button variant="ghost" onClick={() => setIsModalOpen(true)}>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setIsBulkModalOpen(true)}>
             <Upload size={16} /> Bulk Upload
           </Button>
-          <Button variant="primary">
+          <Button variant="primary" onClick={() => setIsAddModalOpen(true)}>
             <Plus size={16} /> Add User
           </Button>
         </div>
@@ -99,52 +127,78 @@ const Users: React.FC = () => {
 
       <Table columns={['Username', 'Name', 'Email', 'Role']}>
         {users.map((u) => (
-          <tr key={u.id}>
-            <td style={{ fontWeight: 500 }}>{u.username}</td>
-            <td>{u.first_name} {u.last_name}</td>
-            <td>{u.email}</td>
-            <td>{getRoleBadge(u.role)}</td>
+          <tr key={u.id} className="transition-colors hover:bg-muted/50">
+            <td className="p-4 font-medium">{u.username}</td>
+            <td className="p-4">{u.first_name} {u.last_name}</td>
+            <td className="p-4 text-muted-foreground">{u.email}</td>
+            <td className="p-4">{getRoleBadge(u.role)}</td>
           </tr>
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={4} style={{ textAlign: 'center', color: '#666666', padding: '2rem' }}>
+            <td colSpan={4} className="p-8 text-center text-muted-foreground">
               No users found. Add users manually or use CSV upload.
             </td>
           </tr>
         )}
       </Table>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setUploadStatus({}); setFile(null); }} title="Bulk Upload Users">
-        <div style={{ marginBottom: '1.5rem' }}>
-          <p style={{ marginBottom: '1rem' }}>
-            Upload a CSV file with columns: <strong style={{ color: '#000000' }}>username, email, first_name, last_name, role, phone_number</strong>
+      {/* Bulk Upload Modal */}
+      <Modal isOpen={isBulkModalOpen} onClose={() => { setIsBulkModalOpen(false); setUploadStatus({}); setFile(null); }} title="Bulk Upload Users">
+        <div className="mb-6 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Upload a CSV file with columns: <strong className="font-medium text-foreground">username, email, first_name, last_name, role, phone_number</strong>
           </p>
-          
-          <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', textAlign: 'center' }}>
-            <input type="file" accept=".csv" onChange={handleFileChange} style={{ fontSize: '0.875rem' }} />
-            {file && <p style={{ marginTop: '0.5rem', color: '#000000' }}>Selected: {file.name}</p>}
+          <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg border-muted-foreground/25 bg-muted/20">
+            <input type="file" accept=".csv" onChange={handleFileChange} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90" />
+            {file && <p className="mt-2 text-sm text-muted-foreground">Selected: {file.name}</p>}
           </div>
-          
           {uploadStatus.message && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#f0f0f0', color: '#000000', borderRadius: 'var(--radius-md)', marginTop: '1rem', fontSize: '0.875rem' }}>
-              ✓ {uploadStatus.message}
-            </div>
+            <div className="p-3 text-sm border rounded-md bg-success/10 text-success border-success/20">✓ {uploadStatus.message}</div>
           )}
-          
           {uploadStatus.errors && uploadStatus.errors.length > 0 && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#fef2f2', color: '#dc2626', borderRadius: 'var(--radius-md)', marginTop: '1rem', fontSize: '0.875rem', maxHeight: '120px', overflowY: 'auto' }}>
-              <ul style={{ paddingLeft: '1rem', margin: 0 }}>
-                {uploadStatus.errors.map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
-              </ul>
+            <div className="p-3 overflow-y-auto text-sm border rounded-md max-h-32 bg-destructive/10 text-destructive border-destructive/20">
+              <ul className="pl-4 list-disc">{uploadStatus.errors.map((err, i) => <li key={i}>{err}</li>)}</ul>
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => setIsBulkModalOpen(false)}>Cancel</Button>
           <Button variant="primary" onClick={handleUpload} isLoading={isUploading} disabled={!file}>Upload</Button>
+        </div>
+      </Modal>
+
+      {/* Add User Modal */}
+      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setFormError(''); }} title="Add New User">
+        {formError && (
+          <div className="p-3 mb-4 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{formError}</div>
+        )}
+        <div className="space-y-1">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input label="First Name" value={newUser.first_name} onChange={(e) => setNewUser({...newUser, first_name: e.target.value})} placeholder="John" />
+            <Input label="Last Name" value={newUser.last_name} onChange={(e) => setNewUser({...newUser, last_name: e.target.value})} placeholder="Doe" />
+          </div>
+          <Input label="Username" value={newUser.username} onChange={(e) => setNewUser({...newUser, username: e.target.value})} placeholder="johndoe" required />
+          <Input label="Email" type="email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} placeholder="john@school.com" />
+          <Input label="Password" type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" required />
+          <Input label="Phone Number" value={newUser.phone_number} onChange={(e) => setNewUser({...newUser, phone_number: e.target.value})} placeholder="+251..." />
+          <div className="flex flex-col w-full mb-4">
+            <label className="mb-1.5 text-sm font-medium text-foreground">Role</label>
+            <select
+              className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground"
+              value={newUser.role}
+              onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+            >
+              <option value="STUDENT">Student</option>
+              <option value="TEACHER">Teacher</option>
+              <option value="PARENT">Parent</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+          <Button variant="primary" onClick={handleAddUser} isLoading={isSaving}>Create User</Button>
         </div>
       </Modal>
     </div>

@@ -1,6 +1,5 @@
 import React, { ReactNode } from 'react';
 import { X } from 'lucide-react';
-import './Modal.css';
 
 interface ModalProps {
   isOpen: boolean;
@@ -13,11 +12,17 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">{title}</h2>
-          <button className="modal-close" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div 
+        className="relative w-full max-w-lg p-6 border shadow-elevated bg-card text-card-foreground sm:rounded-lg animate-slide-up" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4 pb-4 border-b border-border">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <button 
+            className="p-1 transition-colors rounded-sm opacity-70 hover:opacity-100 hover:bg-accent" 
+            onClick={onClose}
+          >
             <X size={20} />
           </button>
         </div>

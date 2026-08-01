@@ -5,11 +5,16 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth.hashers import make_password
 from .models import User
-from .serializers import UserSerializer
+from .serializers import UserSerializer, CreateUserSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CreateUserSerializer
+        return UserSerializer
 
     @action(detail=False, methods=['post'])
     def bulk_upload(self, request):
