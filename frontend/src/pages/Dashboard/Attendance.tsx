@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import Button from '../../components/ui/Button';
-import { CalendarDays, Save } from 'lucide-react';
+import { CalendarDays, Save, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const Attendance: React.FC = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -16,6 +17,11 @@ const Attendance: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
+  
+  const { user } = useAuth();
+  
+  const selectedSectionObj = sections.find(s => s.id.toString() === selectedSection);
+  const isHomeroomTeacher = user?.role === 'ADMIN' || (user?.role === 'TEACHER' && selectedSectionObj?.homeroom_teacher === user?.user_id);
 
   useEffect(() => {
     const fetchDropdowns = async () => {
@@ -55,6 +61,13 @@ const Attendance: React.FC = () => {
       const studentsInSection = studentsRes.data.filter((s: any) => 
         s.enrollments.some((e: any) => e.section.toString() === selectedSection && e.status === 'ACTIVE')
       );
+      
+      studentsInSection.sort((a: any, b: any) => {
+        const nameA = `${a.user.first_name} ${a.user.last_name}`.toLowerCase();
+        const nameB = `${b.user.first_name} ${b.user.last_name}`.toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+      
       setStudents(studentsInSection);
 
       // 2. Get existing attendance for this date
@@ -81,6 +94,7 @@ const Attendance: React.FC = () => {
   };
 
   const handleStatusChange = (studentId: number, status: string) => {
+    if (!isHomeroomTeacher) return;
     setAttendanceData(prev => ({
       ...prev,
       [studentId]: status
@@ -136,9 +150,13 @@ const Attendance: React.FC = () => {
             value={selectedSection}
             onChange={(e) => setSelectedSection(e.target.value)}
           >
-            {sections.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
+            {sections.length > 0 ? (
+              sections.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))
+            ) : (
+              <option value="">No sections assigned</option>
+            )}
           </select>
         </div>
         
@@ -176,6 +194,13 @@ const Attendance: React.FC = () => {
         </div>
       )}
 
+      {!isHomeroomTeacher && students.length > 0 && (
+        <div className="p-3 text-sm border rounded-md bg-yellow-500/10 text-yellow-600 border-yellow-500/20 flex items-center gap-2">
+          <ShieldAlert size={16} />
+          <strong>Read-only mode:</strong> Only the assigned Homeroom Teacher can update attendance for this class.
+        </div>
+      )}
+
       {students.length > 0 ? (
         <div className="border rounded-lg shadow-sm bg-card overflow-hidden">
           <table className="w-full text-sm text-left">
@@ -198,25 +223,25 @@ const Attendance: React.FC = () => {
                       <div className="flex justify-end gap-2">
                         <button 
                           onClick={() => handleStatusChange(student.id, 'PRESENT')}
-                          className={getStatusButtonClass(status, 'PRESENT', 'bg-success text-success-foreground')}
+                          className={getStatusButtonClass(status, 'PRESENT', 'bg-green-500 text-white shadow-md shadow-green-500/20')}
                         >
                           Present
                         </button>
                         <button 
                           onClick={() => handleStatusChange(student.id, 'LATE')}
-                          className={getStatusButtonClass(status, 'LATE', 'bg-warning text-warning-foreground')}
+                          className={getStatusButtonClass(status, 'LATE', 'bg-yellow-500 text-white shadow-md shadow-yellow-500/20')}
                         >
                           Late
                         </button>
                         <button 
                           onClick={() => handleStatusChange(student.id, 'EXCUSED')}
-                          className={getStatusButtonClass(status, 'EXCUSED', 'bg-primary/20 text-primary')}
+                          className={getStatusButtonClass(status, 'EXCUSED', 'bg-blue-500 text-white shadow-md shadow-blue-500/20')}
                         >
                           Excused
                         </button>
                         <button 
                           onClick={() => handleStatusChange(student.id, 'ABSENT')}
-                          className={getStatusButtonClass(status, 'ABSENT', 'bg-destructive text-destructive-foreground')}
+                          className={getStatusButtonClass(status, 'ABSENT', 'bg-red-500 text-white shadow-md shadow-red-500/20')}
                         >
                           Absent
                         </button>
@@ -228,9 +253,15 @@ const Attendance: React.FC = () => {
             </tbody>
           </table>
           <div className="p-4 bg-muted/20 border-t flex justify-end">
-            <Button variant="primary" onClick={handleSave} isLoading={isSaving}>
-              <Save size={16} className="mr-2" /> Save Attendance
-            </Button>
+            {isHomeroomTeacher ? (
+              <Button variant="primary" onClick={handleSave} isLoading={isSaving}>
+                <Save size={16} className="mr-2" /> Save Attendance
+              </Button>
+            ) : (
+              <Button variant="ghost" disabled>
+                Read Only
+              </Button>
+            )}
           </div>
         </div>
       ) : (

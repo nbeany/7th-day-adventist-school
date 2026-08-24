@@ -24,6 +24,7 @@ const roleStyles: Record<string, string> = {
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -33,7 +34,7 @@ const Users: React.FC = () => {
   const [formError, setFormError] = useState('');
 
   const [newUser, setNewUser] = useState({
-    username: '', email: '', first_name: '', last_name: '', role: 'STUDENT', password: '', phone_number: ''
+    username: '', email: '', first_name: '', last_name: '', role: 'TEACHER', password: '', phone_number: ''
   });
 
   const fetchUsers = async () => {
@@ -48,6 +49,15 @@ const Users: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    if (isAddModalOpen && (newUser.first_name || newUser.last_name)) {
+      const fn = newUser.first_name.trim().toLowerCase();
+      const ln = newUser.last_name.trim().toLowerCase();
+      const generated = `${fn}${fn && ln ? '.' : ''}${ln}`.replace(/\s+/g, '');
+      setNewUser(prev => ({...prev, username: generated}));
+    }
+  }, [newUser.first_name, newUser.last_name, isAddModalOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -84,7 +94,7 @@ const Users: React.FC = () => {
     try {
       await api.post('/users/', newUser);
       setIsAddModalOpen(false);
-      setNewUser({ username: '', email: '', first_name: '', last_name: '', role: 'STUDENT', password: '', phone_number: '' });
+      setNewUser({ username: '', email: '', first_name: '', last_name: '', role: 'TEACHER', password: '', phone_number: '' });
       fetchUsers();
     } catch (error: any) {
       const data = error.response?.data;
@@ -125,8 +135,23 @@ const Users: React.FC = () => {
         </div>
       </div>
 
+      <div className="mb-4">
+        <Input 
+          placeholder="Search by name, username, email, or role..." 
+          value={searchQuery} 
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <Table columns={['Username', 'Name', 'Email', 'Role']}>
-        {users.map((u) => (
+        {users.filter(u => {
+          const q = searchQuery.toLowerCase();
+          return u.first_name.toLowerCase().includes(q) ||
+                 u.last_name.toLowerCase().includes(q) ||
+                 u.username.toLowerCase().includes(q) ||
+                 (u.email || '').toLowerCase().includes(q) ||
+                 u.role.toLowerCase().includes(q);
+        }).map((u) => (
           <tr key={u.id} className="transition-colors hover:bg-muted/50">
             <td className="p-4 font-medium">{u.username}</td>
             <td className="p-4">{u.first_name} {u.last_name}</td>
@@ -189,9 +214,7 @@ const Users: React.FC = () => {
               value={newUser.role}
               onChange={(e) => setNewUser({...newUser, role: e.target.value})}
             >
-              <option value="STUDENT">Student</option>
               <option value="TEACHER">Teacher</option>
-              <option value="PARENT">Parent</option>
               <option value="ADMIN">Admin</option>
             </select>
           </div>

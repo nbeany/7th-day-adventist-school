@@ -15,17 +15,17 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 0%;
 
-    --primary: 0 0% 0%;
+    --primary: 171 40% 22%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 0%;
+    --secondary: 43 74% 50%;
+    --secondary-foreground: 0 0% 10%;
 
     --muted: 0 0% 96%;
     --muted-foreground: 0 0% 35%;
 
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 0%;
+    --accent: 43 74% 50%;
+    --accent-foreground: 0 0% 10%;
 
     --destructive: 0 0% 25%;
     --destructive-foreground: 0 0% 100%;
@@ -58,10 +58,10 @@
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 0 0% 0%;
-    --sidebar-primary: 0 0% 0%;
+    --sidebar-primary: 171 40% 22%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-accent: 43 74% 50%;
+    --sidebar-accent-foreground: 0 0% 10%;
     --sidebar-border: 0 0% 88%;
     --sidebar-ring: 0 0% 0%;
   }
@@ -76,17 +76,17 @@
     --popover: 0 0% 8%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 5%;
+    --primary: 171 40% 45%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 43 74% 50%;
+    --secondary-foreground: 0 0% 10%;
 
     --muted: 0 0% 18%;
     --muted-foreground: 0 0% 55%;
 
-    --accent: 0 0% 18%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 43 74% 50%;
+    --accent-foreground: 0 0% 10%;
 
     --destructive: 0 0% 70%;
     --destructive-foreground: 0 0% 5%;
@@ -117,10 +117,10 @@
 
     --sidebar-background: 0 0% 6%;
     --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 0 0% 5%;
-    --sidebar-accent: 0 0% 14%;
-    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-primary: 171 40% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 43 74% 50%;
+    --sidebar-accent-foreground: 0 0% 10%;
     --sidebar-border: 0 0% 15%;
     --sidebar-ring: 0 0% 98%;
   }

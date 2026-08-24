@@ -26,6 +26,18 @@ class Subject(models.Model):
 class Section(models.Model):
     name = models.CharField(max_length=50) # e.g. "Section A", "Section B"
     grade_level = models.ForeignKey(GradeLevel, on_delete=models.CASCADE, related_name="sections")
+    homeroom_teacher = models.OneToOneField('users.User', on_delete=models.SET_NULL, null=True, blank=True, limit_choices_to={'role': 'TEACHER'}, related_name='homeroom_section')
     
     def __str__(self):
         return f"{self.grade_level.name} - {self.name}"
+
+class SubjectTeacher(models.Model):
+    teacher = models.ForeignKey('users.User', on_delete=models.CASCADE, limit_choices_to={'role': 'TEACHER'})
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    section = models.ForeignKey(Section, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('teacher', 'subject', 'section')
+
+    def __str__(self):
+        return f"{self.teacher.username} - {self.subject.name} - {self.section.name}"

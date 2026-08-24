@@ -6,6 +6,7 @@ import api from '../api/axios';
 interface User {
   user_id: number;
   username: string;
+  role: string;
 }
 
 interface AuthContextType {
@@ -38,7 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('refresh_token', refresh);
     const decoded = jwtDecode<User>(access);
     setUser(decoded);
-    navigate('/');
+    navigate('/dashboard');
   };
 
   const logout = () => {

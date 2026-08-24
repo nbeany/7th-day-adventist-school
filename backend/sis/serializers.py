@@ -7,9 +7,19 @@ class GuardianProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     user_id = serializers.IntegerField(write_only=True, required=False)
 
+    student_relations = serializers.SerializerMethodField()
+
     class Meta:
         model = GuardianProfile
         fields = '__all__'
+
+    def get_student_relations(self, obj):
+        return [{
+            "id": rel.student.id,
+            "first_name": rel.student.user.first_name,
+            "last_name": rel.student.user.last_name,
+            "is_primary": rel.is_primary_contact
+        } for rel in obj.student_relations.all()]
 
     def create(self, validated_data):
         user_id = validated_data.pop('user_id', None)
@@ -18,7 +28,7 @@ class GuardianProfileSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class StudentGuardianRelationSerializer(serializers.ModelSerializer):
-    guardian = GuardianProfileSerializer(read_only=True)
+    guardian_detail = GuardianProfileSerializer(source='guardian', read_only=True)
 
     class Meta:
         model = StudentGuardianRelation

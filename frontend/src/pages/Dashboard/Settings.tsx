@@ -9,6 +9,7 @@ interface SchoolConfig {
   primary_color: string;
   secondary_color: string;
   grading_scale: string;
+  principal_signature?: File | string | null;
 }
 
 const Settings: React.FC = () => {
@@ -16,8 +17,10 @@ const Settings: React.FC = () => {
     name: 'My School',
     primary_color: '#000000',
     secondary_color: '#FFFFFF',
-    grading_scale: 'PERCENTAGE'
+    grading_scale: 'PERCENTAGE',
+    principal_signature: null
   });
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -39,10 +42,21 @@ const Settings: React.FC = () => {
     setIsSaving(true);
     setMessage('');
     try {
+      const formData = new FormData();
+      formData.append('name', config.name);
+      formData.append('primary_color', config.primary_color);
+      formData.append('secondary_color', config.secondary_color);
+      formData.append('grading_scale', config.grading_scale);
+      if (signatureFile) {
+        formData.append('principal_signature', signatureFile);
+      }
+
+      const headers = { 'Content-Type': 'multipart/form-data' };
+
       if (config.id) {
-        await api.put(`/schools/${config.id}/`, config);
+        await api.put(`/schools/${config.id}/`, formData, { headers });
       } else {
-        const res = await api.post('/schools/', config);
+        const res = await api.post('/schools/', formData, { headers });
         setConfig(res.data);
       }
       setMessage('Settings saved successfully!');
@@ -102,6 +116,25 @@ const Settings: React.FC = () => {
               <option value="GPA">GPA (0.0-4.0)</option>
               <option value="LETTER">Letter Grade (A, B, C...)</option>
             </select>
+          </div>
+
+          <div className="flex flex-col w-full mb-4">
+            <label className="mb-1.5 text-sm font-medium text-foreground">Principal Signature (PNG/JPG)</label>
+            {typeof config.principal_signature === 'string' && config.principal_signature && (
+              <div className="mb-2">
+                <img src={config.principal_signature} alt="Current Signature" className="h-16 object-contain bg-white border p-1 rounded" />
+              </div>
+            )}
+            <input 
+              type="file"
+              accept="image/*"
+              className="flex w-full px-3 py-2 text-sm bg-input border rounded-md border-border text-foreground"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setSignatureFile(e.target.files[0]);
+                }
+              }}
+            />
           </div>
           
           <div className="flex justify-end pt-4">

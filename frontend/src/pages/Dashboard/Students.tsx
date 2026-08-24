@@ -4,18 +4,35 @@ import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Link } from 'lucide-react';
 
 const Students: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [availableGuardians, setAvailableGuardians] = useState<any[]>([]);
+  const [sections, setSections] = useState<any[]>([]);
+  const [terms, setTerms] = useState<any[]>([]);
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
 
   const [newStudent, setNewStudent] = useState({
-    user: '', date_of_birth: '', gender: '', address: '', medical_notes: ''
+    first_name: '', last_name: '', username: '', password: '', 
+    date_of_birth: '', gender: '', address: '', medical_notes: '',
+    section_id: '', term_id: ''
+  });
+
+  const [linkData, setLinkData] = useState({
+    guardian_id: '', is_primary_contact: false
+  });
+
+  const [enrollData, setEnrollData] = useState({
+    section_id: '', term_id: ''
   });
 
   const fetchStudents = async () => {
@@ -30,12 +47,23 @@ const Students: React.FC = () => {
     }
   };
 
-  const fetchAvailableUsers = async () => {
+  const fetchGuardians = async () => {
     try {
-      const response = await api.get('/users/');
-      // Filter to STUDENT role users who don't already have a profile
-      const studentUsers = response.data.filter((u: any) => u.role === 'STUDENT');
-      setAvailableUsers(studentUsers);
+      const response = await api.get('/guardians/');
+      setAvailableGuardians(response.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchDropdowns = async () => {
+    try {
+      const [secRes, termRes] = await Promise.all([
+        api.get('/sections/'),
+        api.get('/terms/')
+      ]);
+      setSections(secRes.data);
+      setTerms(termRes.data);
     } catch (error) {
       console.error(error);
     }
@@ -43,40 +71,123 @@ const Students: React.FC = () => {
 
   useEffect(() => {
     fetchStudents();
+    fetchGuardians();
+    fetchDropdowns();
   }, []);
 
+  useEffect(() => {
+    if (isAddModalOpen && (newStudent.first_name || newStudent.last_name)) {
+      const fn = newStudent.first_name.trim().toLowerCase();
+      const ln = newStudent.last_name.trim().toLowerCase();
+      const generated = `${fn}${fn && ln ? '.' : ''}${ln}`.replace(/\s+/g, '');
+      setNewStudent(prev => ({...prev, username: generated}));
+    }
+  }, [newStudent.first_name, newStudent.last_name, isAddModalOpen]);
+
   const openAddModal = () => {
-    fetchAvailableUsers();
     setIsAddModalOpen(true);
     setFormError('');
-    setNewStudent({ user: '', date_of_birth: '', gender: '', address: '', medical_notes: '' });
+    setNewStudent({ 
+      first_name: '', last_name: '', username: '', password: '', 
+      date_of_birth: '', gender: '', address: '', medical_notes: '',
+      section_id: '', term_id: '' 
+    });
+  };
+
+  const openLinkModal = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setLinkData({ guardian_id: '', is_primary_contact: false });
+    setIsLinkModalOpen(true);
+  };
+
+  const openEnrollModal = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    setEnrollData({ section_id: '', term_id: '' });
+    setIsEnrollModalOpen(true);
   };
 
   const handleAddStudent = async () => {
-    if (!newStudent.user) {
-      setFormError('Please select a user account.');
+    if (!newStudent.first_name || !newStudent.password || !newStudent.username) {
+      setFormError('Please fill in Name, Username, and Password.');
       return;
     }
     setIsSaving(true);
     setFormError('');
     try {
-      await api.post('/students/', {
-        user_id: parseInt(newStudent.user),
-        date_of_birth: newStudent.date_of_birth || null,
-        gender: newStudent.gender || null,
-        address: newStudent.address,
-        medical_notes: newStudent.medical_notes,
+      const res = await api.post('/students/register/', {
+        user: {
+          first_name: newStudent.first_name,
+          last_name: newStudent.last_name,
+          username: newStudent.username,
+          password: newStudent.password,
+        },
+        profile: {
+          date_of_birth: newStudent.date_of_birth || null,
+          gender: newStudent.gender || null,
+          address: newStudent.address,
+          medical_notes: newStudent.medical_notes,
+        }
       });
+      
+      const studentId = res.data.id;
+      
+      if (newStudent.section_id && newStudent.term_id) {
+        await api.post('/student-enrollments/', {
+          student: studentId,
+          section: parseInt(newStudent.section_id),
+          term: parseInt(newStudent.term_id),
+          status: 'ACTIVE'
+        });
+      }
+
       setIsAddModalOpen(false);
       fetchStudents();
     } catch (error: any) {
       const data = error.response?.data;
-      if (data) {
-        const msgs = Object.values(data).flat().join(' ');
-        setFormError(msgs);
+      if (data && data.error) {
+        setFormError(data.error);
       } else {
-        setFormError('Failed to create student profile.');
+        setFormError('Failed to register student.');
       }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLinkGuardian = async () => {
+    if (!linkData.guardian_id) return;
+    setIsSaving(true);
+    try {
+      await api.post('/student-guardian-relations/', {
+        student: parseInt(selectedStudentId!),
+        guardian: parseInt(linkData.guardian_id),
+        is_primary_contact: linkData.is_primary_contact
+      });
+      setIsLinkModalOpen(false);
+      fetchStudents();
+    } catch (error) {
+      console.error(error);
+      alert('Failed to link guardian. They might already be linked.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEnrollStudent = async () => {
+    if (!enrollData.section_id || !enrollData.term_id) return;
+    setIsSaving(true);
+    try {
+      await api.post('/student-enrollments/', {
+        student: parseInt(selectedStudentId!),
+        section: parseInt(enrollData.section_id),
+        term: parseInt(enrollData.term_id),
+        status: 'ACTIVE'
+      });
+      setIsEnrollModalOpen(false);
+      fetchStudents();
+    } catch (error) {
+      console.error(error);
+      alert('Failed to enroll student. They might already be enrolled in this term.');
     } finally {
       setIsSaving(false);
     }
@@ -87,30 +198,53 @@ const Students: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Student Profiles</h1>
-          <p className="text-sm text-muted-foreground">Manage student bios and class enrollments.</p>
+          <p className="text-sm text-muted-foreground">Manage student bios, guardians, and class enrollments.</p>
         </div>
         <Button variant="primary" onClick={openAddModal}>
-          <UserPlus size={16} className="mr-2" /> Add Student
+          <UserPlus size={16} className="mr-2" /> Register Student
         </Button>
+      </div>
+
+      <div className="mb-4">
+        <Input 
+          placeholder="Search students by name or username..." 
+          value={searchQuery} 
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {isLoading ? (
         <div className="p-8 text-center text-muted-foreground">Loading students...</div>
       ) : (
         <div className="animate-fade-in">
-          <Table columns={['Name', 'Username', 'Gender', 'DOB', 'Primary Guardian', 'Current Class']}>
-            {students.map((student) => {
-              const primaryGuardian = student.guardian_relations?.find((rel: any) => rel.is_primary_contact)?.guardian;
+          <Table columns={['Name', 'Username', 'Gender', 'DOB', 'Guardians', 'Current Class', 'Actions']}>
+            {students.filter(student => {
+              const q = searchQuery.toLowerCase();
+              return student.user.first_name.toLowerCase().includes(q) ||
+                     student.user.last_name.toLowerCase().includes(q) ||
+                     student.user.username.toLowerCase().includes(q);
+            }).map((student) => {
               const currentEnrollment = student.enrollments?.find((e: any) => e.status === 'ACTIVE');
               
               return (
-                <tr key={student.id} className="transition-colors hover:bg-muted/50 cursor-pointer">
+                <tr key={student.id} className="transition-colors hover:bg-muted/50">
                   <td className="p-4 font-medium">{student.user.first_name} {student.user.last_name}</td>
                   <td className="p-4 text-muted-foreground">{student.user.username}</td>
                   <td className="p-4">{student.gender || '—'}</td>
                   <td className="p-4">{student.date_of_birth || '—'}</td>
                   <td className="p-4">
-                    {primaryGuardian ? `${primaryGuardian.user.first_name} ${primaryGuardian.user.last_name}` : <span className="text-muted-foreground italic">None</span>}
+                    {student.guardian_relations?.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {student.guardian_relations.map((rel: any) => (
+                          <span key={rel.id} className="text-xs">
+                            {rel.guardian_detail?.user.first_name} {rel.guardian_detail?.user.last_name} 
+                            {rel.is_primary_contact && <span className="ml-1 text-[10px] bg-primary/10 text-primary px-1 rounded uppercase">Primary</span>}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground italic text-xs">No Guardians</span>
+                    )}
                   </td>
                   <td className="p-4">
                     {currentEnrollment ? (
@@ -121,13 +255,23 @@ const Students: React.FC = () => {
                       <span className="text-muted-foreground italic">Not enrolled</span>
                     )}
                   </td>
+                  <td className="p-4">
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEnrollModal(student.id)}>
+                        Enroll
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openLinkModal(student.id)}>
+                        <Link size={14} className="mr-2" /> Link Guardian
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
             {students.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                  No student profiles found. Create a User with role "Student" first, then add their profile here.
+                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  No student profiles found. Click "Register Student" to add one.
                 </td>
               </tr>
             )}
@@ -136,44 +280,110 @@ const Students: React.FC = () => {
       )}
 
       {/* Add Student Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add Student Profile">
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Register New Student">
         {formError && (
           <div className="p-3 mb-4 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{formError}</div>
         )}
-        <div className="space-y-1">
-          <div className="flex flex-col w-full mb-4">
-            <label className="mb-1.5 text-sm font-medium text-foreground">Link to User Account *</label>
-            <select
-              className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground"
-              value={newStudent.user}
-              onChange={(e) => setNewStudent({...newStudent, user: e.target.value})}
-            >
-              <option value="">Select a student user...</option>
-              {availableUsers.map(u => (
-                <option key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.username})</option>
-              ))}
-            </select>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="First Name *" value={newStudent.first_name} onChange={(e) => setNewStudent({...newStudent, first_name: e.target.value})} />
+            <Input label="Last Name *" value={newStudent.last_name} onChange={(e) => setNewStudent({...newStudent, last_name: e.target.value})} />
           </div>
-          <Input label="Date of Birth" type="date" value={newStudent.date_of_birth} onChange={(e) => setNewStudent({...newStudent, date_of_birth: e.target.value})} />
-          <div className="flex flex-col w-full mb-4">
-            <label className="mb-1.5 text-sm font-medium text-foreground">Gender</label>
-            <select
-              className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground"
-              value={newStudent.gender}
-              onChange={(e) => setNewStudent({...newStudent, gender: e.target.value})}
-            >
-              <option value="">Select...</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-              <option value="O">Other</option>
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Username *" value={newStudent.username} onChange={(e) => setNewStudent({...newStudent, username: e.target.value})} />
+            <Input label="Password *" type="password" value={newStudent.password} onChange={(e) => setNewStudent({...newStudent, password: e.target.value})} />
+          </div>
+          <hr className="my-2 border-border" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Date of Birth" type="date" value={newStudent.date_of_birth} onChange={(e) => setNewStudent({...newStudent, date_of_birth: e.target.value})} />
+            <div className="flex flex-col w-full">
+              <label className="mb-1.5 text-sm font-medium text-foreground">Gender</label>
+              <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={newStudent.gender} onChange={(e) => setNewStudent({...newStudent, gender: e.target.value})}>
+                <option value="">Select...</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+          </div>
+          <hr className="my-2 border-border" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col w-full">
+              <label className="mb-1.5 text-sm font-medium text-foreground">Term (Optional)</label>
+              <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={newStudent.term_id} onChange={(e) => setNewStudent({...newStudent, term_id: e.target.value})}>
+                <option value="">Choose a term...</option>
+                {terms.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col w-full">
+              <label className="mb-1.5 text-sm font-medium text-foreground">Class (Optional)</label>
+              <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={newStudent.section_id} onChange={(e) => setNewStudent({...newStudent, section_id: e.target.value})}>
+                <option value="">Choose a class...</option>
+                {sections.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <Input label="Address" value={newStudent.address} onChange={(e) => setNewStudent({...newStudent, address: e.target.value})} placeholder="Home address" />
           <Input label="Medical Notes" value={newStudent.medical_notes} onChange={(e) => setNewStudent({...newStudent, medical_notes: e.target.value})} placeholder="Any allergies, conditions..." />
         </div>
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex justify-end gap-3 pt-6">
           <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleAddStudent} isLoading={isSaving}>Create Profile</Button>
+          <Button variant="primary" onClick={handleAddStudent} isLoading={isSaving}>Register Student</Button>
+        </div>
+      </Modal>
+
+      {/* Link Guardian Modal */}
+      <Modal isOpen={isLinkModalOpen} onClose={() => setIsLinkModalOpen(false)} title="Link Guardian">
+        <div className="space-y-4">
+          <div className="flex flex-col w-full">
+            <label className="mb-1.5 text-sm font-medium text-foreground">Select Guardian</label>
+            <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={linkData.guardian_id} onChange={(e) => setLinkData({...linkData, guardian_id: e.target.value})}>
+              <option value="">Choose an existing guardian...</option>
+              {availableGuardians.map(g => (
+                <option key={g.id} value={g.id}>{g.user.first_name} {g.user.last_name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 mt-4">
+            <input type="checkbox" id="is_primary" checked={linkData.is_primary_contact} onChange={(e) => setLinkData({...linkData, is_primary_contact: e.target.checked})} className="rounded border-border text-primary" />
+            <label htmlFor="is_primary" className="text-sm font-medium">Set as Primary Contact</label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-6">
+          <Button variant="ghost" onClick={() => setIsLinkModalOpen(false)}>Cancel</Button>
+          <Button variant="primary" onClick={handleLinkGuardian} isLoading={isSaving} disabled={!linkData.guardian_id}>Link</Button>
+        </div>
+      </Modal>
+
+      {/* Enroll Modal */}
+      <Modal isOpen={isEnrollModalOpen} onClose={() => setIsEnrollModalOpen(false)} title="Enroll in Class">
+        <div className="space-y-4">
+          <div className="flex flex-col w-full">
+            <label className="mb-1.5 text-sm font-medium text-foreground">Select Term</label>
+            <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={enrollData.term_id} onChange={(e) => setEnrollData({...enrollData, term_id: e.target.value})}>
+              <option value="">Choose a term...</option>
+              {terms.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col w-full">
+            <label className="mb-1.5 text-sm font-medium text-foreground">Select Class (Section)</label>
+            <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={enrollData.section_id} onChange={(e) => setEnrollData({...enrollData, section_id: e.target.value})}>
+              <option value="">Choose a class...</option>
+              {sections.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-6">
+          <Button variant="ghost" onClick={() => setIsEnrollModalOpen(false)}>Cancel</Button>
+          <Button variant="primary" onClick={handleEnrollStudent} isLoading={isSaving} disabled={!enrollData.section_id || !enrollData.term_id}>Enroll</Button>
         </div>
       </Modal>
     </div>

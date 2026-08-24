@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -10,7 +11,14 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,10 +46,10 @@ const Login: React.FC = () => {
       
       <div className="relative w-full max-w-md p-8 sm:p-10 glass-card sm:rounded-2xl shadow-glow animate-scale-in">
         <div className="mb-8 text-center">
-          <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-xl gradient-primary text-primary-foreground shadow-card">
-            <GraduationCap size={24} />
+          <div className="flex items-center justify-center w-24 h-24 mx-auto mb-4 bg-transparent">
+            <img src="/logo.png" alt="SDA Logo" className="w-full h-full object-contain drop-shadow-md" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">EduPortal</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Debre Berhan SDA School</h1>
           <p className="mt-2 text-sm text-muted-foreground">Sign in to your school dashboard</p>
         </div>
 
