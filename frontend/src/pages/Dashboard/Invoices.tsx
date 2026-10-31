@@ -4,7 +4,7 @@ import Button from '../../components/ui/Button';
 import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
-import { DollarSign, Send, FileText } from 'lucide-react';
+import { DollarSign, Send, FileText, Download } from 'lucide-react';
 
 const Invoices: React.FC = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -81,6 +81,21 @@ const Invoices: React.FC = () => {
     }
   };
 
+  const handleExportCSV = async () => {
+    try {
+      const response = await api.get('/invoices/export/', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'invoices_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+    } catch (error) {
+      console.error('Failed to export invoices', error);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     if (status === 'PAID') return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-success/10 text-success">PAID</span>;
     if (status === 'PARTIAL') return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-warning/10 text-warning">PARTIAL</span>;
@@ -94,9 +109,14 @@ const Invoices: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight">Invoices & Payments</h1>
           <p className="text-sm text-muted-foreground">Manage student billing and record payments.</p>
         </div>
-        <Button variant="primary" onClick={() => setIsGenerateModalOpen(true)}>
-          <FileText size={16} className="mr-2" /> Generate Invoices
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportCSV} disabled={invoices.length === 0}>
+            <Download size={16} className="mr-2" /> Export CSV
+          </Button>
+          <Button variant="primary" onClick={() => setIsGenerateModalOpen(true)}>
+            <FileText size={16} className="mr-2" /> Generate Invoices
+          </Button>
+        </div>
       </div>
 
       {message && (

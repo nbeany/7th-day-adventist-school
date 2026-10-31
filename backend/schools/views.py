@@ -1,11 +1,13 @@
 from rest_framework import viewsets, permissions
+from core.permissions import IsAdminOrReadOnly, IsAdmin
 from .models import SchoolConfig, Announcement
 from .serializers import SchoolConfigSerializer, AnnouncementSerializer
 from django.db.models import Q
 
 class SchoolConfigViewSet(viewsets.ModelViewSet):
-    queryset = SchoolConfig.objects.all()
+    queryset = SchoolConfig.objects.all().order_by('id')
     serializer_class = SchoolConfigSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
     serializer_class = AnnouncementSerializer
@@ -13,7 +15,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        return [IsAdmin()]
 
     def get_queryset(self):
         user = self.request.user

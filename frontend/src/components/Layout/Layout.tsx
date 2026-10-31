@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Users, GraduationCap, Settings, LogOut, LayoutDashboard, DollarSign, CalendarDays, Key } from 'lucide-react';
+import { Users, GraduationCap, Settings, LogOut, LayoutDashboard, DollarSign, CalendarDays, Key, History } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -12,12 +12,19 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, clearMustChangePassword } = useAuth();
   const location = useLocation();
+  const mustChangePassword = !!user?.must_change_password;
   const [isPasswordModalOpen, setIsPasswordModalOpen] = React.useState(false);
   const [passwordData, setPasswordData] = React.useState({ old_password: '', new_password: '', confirm_password: '' });
   const [passwordStatus, setPasswordStatus] = React.useState({ error: '', success: '' });
   const [isChangingPassword, setIsChangingPassword] = React.useState(false);
+
+  React.useEffect(() => {
+    if (mustChangePassword) {
+      setIsPasswordModalOpen(true);
+    }
+  }, [mustChangePassword]);
 
   const handleChangePassword = async () => {
     setPasswordStatus({ error: '', success: '' });
@@ -35,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         old_password: passwordData.old_password,
         new_password: passwordData.new_password
       });
+      clearMustChangePassword();
       setPasswordStatus({ error: '', success: 'Password changed successfully!' });
       setTimeout(() => {
         setIsPasswordModalOpen(false);
@@ -62,6 +70,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       case '/fees': return 'Fee Structure';
       case '/invoices': return 'Invoices & Payments';
       case '/settings': return 'School Settings';
+      case '/audit-log': return 'Audit Log';
       default: return 'Portal';
     }
   };
@@ -179,9 +188,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <LayoutDashboard size={18} /> Gradebook
             </NavLink>
           )}
-          {['ADMIN', 'STUDENT', 'PARENT'].includes(user?.role || '') && (
-            <NavLink 
-              to="/report-cards" 
+          {['ADMIN', 'TEACHER', 'STUDENT', 'PARENT'].includes(user?.role || '') && (
+            <NavLink
+              to="/report-cards"
               className={({ isActive }) => 
                 `flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-md ${
                   isActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -245,6 +254,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 <Settings size={18} /> Settings
               </NavLink>
+              <NavLink
+                to="/audit-log"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-md ${
+                    isActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  }`
+                }
+              >
+                <History size={18} /> Audit Log
+              </NavLink>
             </>
           )}
         </nav>
@@ -273,8 +292,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </main>
 
-      <Modal isOpen={isPasswordModalOpen} onClose={() => { setIsPasswordModalOpen(false); setPasswordStatus({error: '', success: ''}); setPasswordData({ old_password: '', new_password: '', confirm_password: '' }); }} title="Change Password">
+      <Modal
+        isOpen={isPasswordModalOpen}
+        onClose={() => {
+          if (mustChangePassword) return;
+          setIsPasswordModalOpen(false);
+          setPasswordStatus({ error: '', success: '' });
+          setPasswordData({ old_password: '', new_password: '', confirm_password: '' });
+        }}
+        title="Change Password"
+      >
         <div className="space-y-4">
+          {mustChangePassword && (
+            <div className="p-3 text-sm border rounded-md bg-primary/10 text-foreground border-primary/20">
+              Your account was created with a temporary password. Set a new password to continue.
+            </div>
+          )}
           {passwordStatus.error && (
             <div className="p-3 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{passwordStatus.error}</div>
           )}
@@ -302,7 +335,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           />
         </div>
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="ghost" onClick={() => setIsPasswordModalOpen(false)}>Cancel</Button>
+          {!mustChangePassword && (
+            <Button variant="ghost" onClick={() => setIsPasswordModalOpen(false)}>Cancel</Button>
+          )}
           <Button variant="primary" onClick={handleChangePassword} isLoading={isChangingPassword}>Change Password</Button>
         </div>
       </Modal>

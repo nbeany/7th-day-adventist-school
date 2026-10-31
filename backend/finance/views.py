@@ -2,19 +2,25 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
+from core.permissions import IsAdminOrReadOnly
+from core.mixins import ProtectedDestroyMixin
+from core.csv_export import csv_response
+from audit.models import AuditLog
 from .models import FeeCategory, Invoice, InvoiceItem, Payment
 from .serializers import FeeCategorySerializer, InvoiceSerializer, PaymentSerializer
 from sis.models import StudentProfile
 from academics.models import Term
 import datetime
 
-class FeeCategoryViewSet(viewsets.ModelViewSet):
+class FeeCategoryViewSet(ProtectedDestroyMixin, viewsets.ModelViewSet):
     queryset = FeeCategory.objects.all()
     serializer_class = FeeCategorySerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all().select_related('student__user', 'term').prefetch_related('items', 'payments')
     serializer_class = InvoiceSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -38,6 +44,27 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if student:
             queryset = queryset.filter(student_id=student)
         return queryset
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        queryset = self.get_queryset()
+        rows = (
+            [
+                f"{inv.student.user.first_name} {inv.student.user.last_name}",
+                inv.term.name,
+                inv.status,
+                inv.total_amount,
+                inv.amount_paid,
+                inv.total_amount - inv.amount_paid,
+                inv.due_date,
+            ]
+            for inv in queryset
+        )
+        return csv_response(
+            'invoices_export.csv',
+            ['Student', 'Term', 'Status', 'Total', 'Paid', 'Balance', 'Due Date'],
+            rows
+        )
 
     @action(detail=False, methods=['post'])
     def generate_term_invoices(self, request):
@@ -87,8 +114,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response({"message": f"Generated {created_count} new invoices for term {term.name}."})
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all().select_related('invoice__student__user')
+    queryset = Payment.objects.all().select_related('invoice__student__user').order_by('-payment_date', '-id')
     serializer_class = PaymentSerializer
+    permission_classes = [IsAdminOrReadOnly]
+
+    def perform_create(self, serializer):
+        payment = serializer.save()
+        AuditLog.objects.log(
+            self.request.user, 'payment.create', object_repr=str(payment),
+            invoice_id=payment.invoice_id, amount=str(payment.amount), method=payment.payment_method
+        )
 
     def get_queryset(self):
         queryset = super().get_queryset()

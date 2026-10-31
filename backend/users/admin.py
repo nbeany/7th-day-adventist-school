@@ -6,7 +6,7 @@ class CustomUserAdmin(UserAdmin):
     model = User
     list_display = ['username', 'email', 'first_name', 'last_name', 'role', 'is_staff']
     fieldsets = UserAdmin.fieldsets + (
-        ('Extra Fields', {'fields': ('role', 'phone_number')}),
+        ('Extra Fields', {'fields': ('role', 'phone_number', 'must_change_password')}),
     )
     add_fieldsets = UserAdmin.add_fieldsets + (
         ('Extra Fields', {'fields': ('role', 'phone_number')}),

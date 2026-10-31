@@ -81,7 +81,7 @@ const Gradebook: React.FC = () => {
     setMessage('');
     try {
       // Get students enrolled in this section
-      const studentsRes = await api.get('/students/');
+      const studentsRes = await api.get('/students/?page_size=1000');
       const enrolled = studentsRes.data.filter((s: any) =>
         s.enrollments?.some((e: any) => e.section.toString() === selectedSection && e.status === 'ACTIVE')
       );

@@ -1,33 +1,96 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Table from '../../components/ui/Table';
-import { FileText } from 'lucide-react';
+import { FileText, Archive, Download } from 'lucide-react';
 
 const ReportCards: React.FC = () => {
+  const { user } = useAuth();
+  const canBatchGenerate = user?.role === 'ADMIN' || user?.role === 'TEACHER';
+
   const [students, setStudents] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
+  const [sections, setSections] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [termGrades, setTermGrades] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [batchSection, setBatchSection] = useState('');
+  const [batchTerm, setBatchTerm] = useState('');
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
+  const [batchError, setBatchError] = useState('');
+
   useEffect(() => {
     const fetchDropdowns = async () => {
       try {
-        const [studRes, termRes] = await Promise.all([
-          api.get('/students/'),
-          api.get('/terms/')
+        const [studRes, termRes, secRes] = await Promise.all([
+          api.get('/students/?page_size=1000'),
+          api.get('/terms/'),
+          api.get('/sections/')
         ]);
         setStudents(studRes.data);
         setTerms(termRes.data);
+        setSections(secRes.data);
       } catch (error) {
         console.error(error);
       }
     };
     fetchDropdowns();
   }, []);
+
+  const handleBatchDownload = async () => {
+    if (!batchSection || !batchTerm) return;
+    setIsBatchDownloading(true);
+    setBatchError('');
+    try {
+      const response = await api.get(
+        `/term-grades/generate_section_report_cards/?section_id=${batchSection}&term_id=${batchTerm}`,
+        { responseType: 'blob' }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `report_cards_section_${batchSection}_term_${batchTerm}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+    } catch (error: any) {
+      if (error.response?.data instanceof Blob) {
+        const text = await error.response.data.text();
+        try {
+          setBatchError(JSON.parse(text).error || 'Failed to generate report cards.');
+        } catch {
+          setBatchError('Failed to generate report cards.');
+        }
+      } else {
+        setBatchError('Failed to generate report cards.');
+      }
+    } finally {
+      setIsBatchDownloading(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    if (!batchSection || !batchTerm) return;
+    try {
+      const response = await api.get(
+        `/term-grades/export/?section=${batchSection}&term=${batchTerm}`,
+        { responseType: 'blob' }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `term_grades_section_${batchSection}_term_${batchTerm}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+    } catch (error) {
+      console.error('Failed to export grades', error);
+    }
+  };
 
   const fetchTermGrades = async () => {
     if (!selectedStudent || !selectedTerm) return;
@@ -112,6 +175,33 @@ const ReportCards: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* Batch download for a whole class */}
+      {canBatchGenerate && (
+        <div className="flex flex-wrap items-end gap-4 p-4 border rounded-lg bg-card shadow-sm">
+          <div className="flex flex-col gap-1.5 w-64">
+            <label className="text-xs font-medium text-muted-foreground">Generate for a Whole Class</label>
+            <select className="w-full px-3 py-2 text-sm bg-input border rounded-md border-border text-foreground" value={batchSection} onChange={(e) => setBatchSection(e.target.value)}>
+              <option value="">Select a class...</option>
+              {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5 w-48">
+            <label className="text-xs font-medium text-muted-foreground">Term</label>
+            <select className="w-full px-3 py-2 text-sm bg-input border rounded-md border-border text-foreground" value={batchTerm} onChange={(e) => setBatchTerm(e.target.value)}>
+              <option value="">Select a term...</option>
+              {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <Button variant="outline" onClick={handleBatchDownload} isLoading={isBatchDownloading} disabled={!batchSection || !batchTerm}>
+            <Archive size={16} className="mr-2" /> Download All (.zip)
+          </Button>
+          <Button variant="outline" onClick={handleExportCSV} disabled={!batchSection || !batchTerm}>
+            <Download size={16} className="mr-2" /> Export CSV
+          </Button>
+          {batchError && <p className="text-sm text-destructive w-full">{batchError}</p>}
+        </div>
+      )}
 
       {/* Summary Card */}
       {termGrades.length > 0 && summary && (

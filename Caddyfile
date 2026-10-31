@@ -1,0 +1,33 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# Static/media are collected onto shared volumes (see
+	# docker-compose.prod.yml) and served directly by Caddy rather than
+	# routed through gunicorn - if AWS_STORAGE_BUCKET_NAME is set, media
+	# uploads go straight to S3 instead and this path simply sees no traffic.
+	handle /static/* {
+		root * /srv
+		file_server
+	}
+	handle /media/* {
+		root * /srv
+		file_server
+	}
+
+	# Django admin and the DRF API.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /admin/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else is the React app.
+	handle {
+		reverse_proxy frontend:80
+	}
+}

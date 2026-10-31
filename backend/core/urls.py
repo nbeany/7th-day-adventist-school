@@ -1,13 +1,18 @@
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework.throttling import UserRateThrottle
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
 from users.serializers import CustomTokenObtainPairSerializer
 
+class LoginThrottle(UserRateThrottle):
+    scope = 'login'
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [LoginThrottle]
 
 from rest_framework.routers import DefaultRouter
 from academics.views import TermViewSet, GradeLevelViewSet, SubjectViewSet, SectionViewSet, SubjectTeacherViewSet
@@ -19,6 +24,7 @@ from grades.views import AssignmentViewSet, GradeViewSet, TermGradeViewSet
 from finance.views import FeeCategoryViewSet, InvoiceViewSet, PaymentViewSet
 from core.dashboard import DashboardStatsView
 from timetable.views import PeriodViewSet, ClassScheduleViewSet
+from audit.views import AuditLogViewSet
 
 router = DefaultRouter()
 router.register(r'terms', TermViewSet)
@@ -42,6 +48,7 @@ router.register(r'invoices', InvoiceViewSet)
 router.register(r'payments', PaymentViewSet)
 router.register(r'periods', PeriodViewSet)
 router.register(r'class-schedules', ClassScheduleViewSet)
+router.register(r'audit-logs', AuditLogViewSet, basename='auditlog')
 
 from django.conf import settings
 from django.conf.urls.static import static

@@ -23,3 +23,14 @@ RUN pip install -r requirements.txt
 
 # Copy project
 COPY . /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+# The entrypoint waits for Postgres, applies migrations, and (outside
+# DEBUG) collects static files, then hands off to whatever CMD/command
+# actually runs - gunicorn here, or `runserver` when docker-compose.yml
+# overrides it for local dev.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
+# Production default: run under gunicorn. Local dev overrides this command
+# in docker-compose.yml to use the auto-reloading Django dev server instead.
+CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]

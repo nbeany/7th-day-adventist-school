@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
@@ -14,6 +15,8 @@ const DAYS = [
 ];
 
 const Timetable: React.FC = () => {
+  const { user } = useAuth();
+  const canEdit = user?.role === 'ADMIN';
   const [viewMode, setViewMode] = useState<'SECTION' | 'TEACHER'>('SECTION');
   const [sections, setSections] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -163,14 +166,16 @@ const Timetable: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight">Timetable</h1>
           <p className="text-sm text-muted-foreground">Manage and view class schedules.</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={() => setIsPeriodModalOpen(true)}>
-            <Clock size={16} className="mr-2" /> Manage Periods
-          </Button>
-          <Button variant={isEditMode ? "primary" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
-            <Edit2 size={16} className="mr-2" /> {isEditMode ? 'Exit Edit Mode' : 'Edit Mode'}
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setIsPeriodModalOpen(true)}>
+              <Clock size={16} className="mr-2" /> Manage Periods
+            </Button>
+            <Button variant={isEditMode ? "primary" : "outline"} onClick={() => setIsEditMode(!isEditMode)}>
+              <Edit2 size={16} className="mr-2" /> {isEditMode ? 'Exit Edit Mode' : 'Edit Mode'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-4 p-4 border rounded-lg bg-card shadow-sm">

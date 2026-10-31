@@ -4,7 +4,8 @@ import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
-import { UserPlus, Link } from 'lucide-react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { UserPlus, Link, Pencil, Trash2, KeyRound } from 'lucide-react';
 
 const Students: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]);
@@ -14,17 +15,24 @@ const Students: React.FC = () => {
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  
+
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [availableGuardians, setAvailableGuardians] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ username: string; password: string } | null>(null);
 
   const [newStudent, setNewStudent] = useState({
-    first_name: '', last_name: '', username: '', password: '', 
+    first_name: '', last_name: '', username: '', password: '',
     date_of_birth: '', gender: '', address: '', medical_notes: '',
     section_id: '', term_id: ''
+  });
+
+  const [editData, setEditData] = useState({
+    first_name: '', last_name: '', email: '', phone_number: '',
+    date_of_birth: '', gender: '', address: '', medical_notes: ''
   });
 
   const [linkData, setLinkData] = useState({
@@ -35,10 +43,10 @@ const Students: React.FC = () => {
     section_id: '', term_id: ''
   });
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (search = '') => {
     setIsLoading(true);
     try {
-      const response = await api.get('/students/');
+      const response = await api.get(`/students/${search ? `?search=${encodeURIComponent(search)}` : ''}`);
       setStudents(response.data);
     } catch (error) {
       console.error("Failed to fetch students", error);
@@ -49,7 +57,7 @@ const Students: React.FC = () => {
 
   const fetchGuardians = async () => {
     try {
-      const response = await api.get('/guardians/');
+      const response = await api.get('/guardians/?page_size=1000');
       setAvailableGuardians(response.data);
     } catch (error) {
       console.error(error);
@@ -69,11 +77,16 @@ const Students: React.FC = () => {
     }
   };
 
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
   useEffect(() => {
-    fetchStudents();
     fetchGuardians();
     fetchDropdowns();
   }, []);
+
+  useEffect(() => {
+    fetchStudents(debouncedSearch);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (isAddModalOpen && (newStudent.first_name || newStudent.last_name)) {
@@ -141,7 +154,7 @@ const Students: React.FC = () => {
       }
 
       setIsAddModalOpen(false);
-      fetchStudents();
+      fetchStudents(debouncedSearch);
     } catch (error: any) {
       const data = error.response?.data;
       if (data && data.error) {
@@ -151,6 +164,68 @@ const Students: React.FC = () => {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const openEditModal = (student: any) => {
+    setEditingStudent(student);
+    setFormError('');
+    setEditData({
+      first_name: student.user.first_name || '',
+      last_name: student.user.last_name || '',
+      email: student.user.email || '',
+      phone_number: student.user.phone_number || '',
+      date_of_birth: student.date_of_birth || '',
+      gender: student.gender || '',
+      address: student.address || '',
+      medical_notes: student.medical_notes || ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingStudent) return;
+    setIsSaving(true);
+    setFormError('');
+    try {
+      await api.patch(`/users/${editingStudent.user.id}/`, {
+        first_name: editData.first_name,
+        last_name: editData.last_name,
+        email: editData.email,
+        phone_number: editData.phone_number
+      });
+      await api.patch(`/students/${editingStudent.id}/`, {
+        date_of_birth: editData.date_of_birth || null,
+        gender: editData.gender || null,
+        address: editData.address,
+        medical_notes: editData.medical_notes
+      });
+      setEditingStudent(null);
+      fetchStudents(debouncedSearch);
+    } catch (error: any) {
+      const data = error.response?.data;
+      setFormError(data ? Object.values(data).flat().join(' ') : 'Failed to save changes.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteStudent = async (student: any) => {
+    if (!window.confirm(`Delete ${student.user.first_name} ${student.user.last_name}? This also removes their enrollments, grades, attendance, and guardian links, and cannot be undone.`)) return;
+    try {
+      await api.delete(`/users/${student.user.id}/`);
+      fetchStudents(debouncedSearch);
+    } catch (error) {
+      alert('Failed to delete student.');
+    }
+  };
+
+  const handleResetPassword = async (student: any) => {
+    if (!window.confirm(`Reset the password for ${student.user.username}? They'll be required to set a new one on next login.`)) return;
+    try {
+      const res = await api.post(`/users/${student.user.id}/reset_password/`);
+      setResetPasswordResult({ username: student.user.username, password: res.data.temporary_password });
+    } catch (error) {
+      alert('Failed to reset password.');
     }
   };
 
@@ -164,7 +239,7 @@ const Students: React.FC = () => {
         is_primary_contact: linkData.is_primary_contact
       });
       setIsLinkModalOpen(false);
-      fetchStudents();
+      fetchStudents(debouncedSearch);
     } catch (error) {
       console.error(error);
       alert('Failed to link guardian. They might already be linked.');
@@ -184,7 +259,7 @@ const Students: React.FC = () => {
         status: 'ACTIVE'
       });
       setIsEnrollModalOpen(false);
-      fetchStudents();
+      fetchStudents(debouncedSearch);
     } catch (error) {
       console.error(error);
       alert('Failed to enroll student. They might already be enrolled in this term.');
@@ -218,14 +293,9 @@ const Students: React.FC = () => {
       ) : (
         <div className="animate-fade-in">
           <Table columns={['Name', 'Username', 'Gender', 'DOB', 'Guardians', 'Current Class', 'Actions']}>
-            {students.filter(student => {
-              const q = searchQuery.toLowerCase();
-              return student.user.first_name.toLowerCase().includes(q) ||
-                     student.user.last_name.toLowerCase().includes(q) ||
-                     student.user.username.toLowerCase().includes(q);
-            }).map((student) => {
+            {students.map((student) => {
               const currentEnrollment = student.enrollments?.find((e: any) => e.status === 'ACTIVE');
-              
+
               return (
                 <tr key={student.id} className="transition-colors hover:bg-muted/50">
                   <td className="p-4 font-medium">{student.user.first_name} {student.user.last_name}</td>
@@ -256,12 +326,21 @@ const Students: React.FC = () => {
                     )}
                   </td>
                   <td className="p-4">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" onClick={() => openEnrollModal(student.id)}>
                         Enroll
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openLinkModal(student.id)}>
                         <Link size={14} className="mr-2" /> Link Guardian
+                      </Button>
+                      <Button variant="ghost" className="px-2" title="Edit" onClick={() => openEditModal(student)}>
+                        <Pencil size={14} />
+                      </Button>
+                      <Button variant="ghost" className="px-2" title="Reset Password" onClick={() => handleResetPassword(student)}>
+                        <KeyRound size={14} />
+                      </Button>
+                      <Button variant="ghost" className="px-2 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => handleDeleteStudent(student)}>
+                        <Trash2 size={14} />
                       </Button>
                     </div>
                   </td>
@@ -384,6 +463,59 @@ const Students: React.FC = () => {
         <div className="flex justify-end gap-3 pt-6">
           <Button variant="ghost" onClick={() => setIsEnrollModalOpen(false)}>Cancel</Button>
           <Button variant="primary" onClick={handleEnrollStudent} isLoading={isSaving} disabled={!enrollData.section_id || !enrollData.term_id}>Enroll</Button>
+        </div>
+      </Modal>
+
+      {/* Edit Student Modal */}
+      <Modal isOpen={!!editingStudent} onClose={() => setEditingStudent(null)} title="Edit Student">
+        {formError && (
+          <div className="p-3 mb-4 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{formError}</div>
+        )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="First Name" value={editData.first_name} onChange={(e) => setEditData({...editData, first_name: e.target.value})} />
+            <Input label="Last Name" value={editData.last_name} onChange={(e) => setEditData({...editData, last_name: e.target.value})} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Email" type="email" value={editData.email} onChange={(e) => setEditData({...editData, email: e.target.value})} />
+            <Input label="Phone Number" value={editData.phone_number} onChange={(e) => setEditData({...editData, phone_number: e.target.value})} placeholder="+251..." />
+          </div>
+          <hr className="my-2 border-border" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Date of Birth" type="date" value={editData.date_of_birth} onChange={(e) => setEditData({...editData, date_of_birth: e.target.value})} />
+            <div className="flex flex-col w-full">
+              <label className="mb-1.5 text-sm font-medium text-foreground">Gender</label>
+              <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={editData.gender} onChange={(e) => setEditData({...editData, gender: e.target.value})}>
+                <option value="">Select...</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+          </div>
+          <Input label="Address" value={editData.address} onChange={(e) => setEditData({...editData, address: e.target.value})} />
+          <Input label="Medical Notes" value={editData.medical_notes} onChange={(e) => setEditData({...editData, medical_notes: e.target.value})} />
+        </div>
+        <div className="flex justify-end gap-3 pt-6">
+          <Button variant="ghost" onClick={() => setEditingStudent(null)}>Cancel</Button>
+          <Button variant="primary" onClick={handleSaveEdit} isLoading={isSaving}>Save Changes</Button>
+        </div>
+      </Modal>
+
+      {/* Reset Password Result */}
+      <Modal isOpen={!!resetPasswordResult} onClose={() => setResetPasswordResult(null)} title="Password Reset">
+        {resetPasswordResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Share this temporary password with <strong className="text-foreground">{resetPasswordResult.username}</strong> securely. They'll be required to set a new one the next time they log in.
+            </p>
+            <div className="p-3 font-mono text-sm text-center border rounded-md bg-muted select-all">
+              {resetPasswordResult.password}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end pt-4">
+          <Button variant="primary" onClick={() => setResetPasswordResult(null)}>Done</Button>
         </div>
       </Modal>
     </div>

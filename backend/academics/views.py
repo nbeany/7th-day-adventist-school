@@ -1,20 +1,24 @@
 from rest_framework import viewsets
+from core.permissions import IsAdminOrReadOnly
 from .models import Term, GradeLevel, Subject, Section, SubjectTeacher
 from .serializers import TermSerializer, GradeLevelSerializer, SubjectSerializer, SectionSerializer, SubjectTeacherSerializer
 
 class TermViewSet(viewsets.ModelViewSet):
-    queryset = Term.objects.all()
+    queryset = Term.objects.all().order_by('-start_date')
     serializer_class = TermSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 class GradeLevelViewSet(viewsets.ModelViewSet):
     queryset = GradeLevel.objects.all().order_by('level_order')
     serializer_class = GradeLevelSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
 from django.db import models
 
 class SubjectViewSet(viewsets.ModelViewSet):
-    queryset = Subject.objects.all()
+    queryset = Subject.objects.all().order_by('name')
     serializer_class = SubjectSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -32,8 +36,9 @@ class SubjectViewSet(viewsets.ModelViewSet):
         return qs
 
 class SectionViewSet(viewsets.ModelViewSet):
-    queryset = Section.objects.all()
+    queryset = Section.objects.all().order_by('grade_level__level_order', 'name')
     serializer_class = SectionSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -47,8 +52,9 @@ class SectionViewSet(viewsets.ModelViewSet):
         return qs
 
 class SubjectTeacherViewSet(viewsets.ModelViewSet):
-    queryset = SubjectTeacher.objects.all()
+    queryset = SubjectTeacher.objects.all().order_by('id')
     serializer_class = SubjectTeacherSerializer
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()

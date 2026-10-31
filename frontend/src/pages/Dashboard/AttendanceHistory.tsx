@@ -12,6 +12,7 @@ const AttendanceHistory: React.FC = () => {
   const [records, setRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState({ present: 0, absent: 0, late: 0, excused: 0, total: 0 });
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const fetchSections = async () => {
@@ -67,6 +68,28 @@ const AttendanceHistory: React.FC = () => {
       fetchHistory();
     }
   }, [selectedSection, startDate, endDate]);
+
+  const handleExport = async () => {
+    if (!selectedSection) return;
+    setIsExporting(true);
+    try {
+      const response = await api.get(
+        `/attendance/export/?section=${selectedSection}&start_date=${startDate}&end_date=${endDate}`,
+        { responseType: 'blob' }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `attendance_${startDate}_to_${endDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+    } catch (error) {
+      console.error('Failed to export attendance', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const getPercentage = (value: number) => {
     if (stats.total === 0) return '0';
@@ -128,6 +151,9 @@ const AttendanceHistory: React.FC = () => {
         </div>
         <Button variant="ghost" onClick={fetchHistory} isLoading={isLoading}>
           <BarChart3 size={16} className="mr-2" /> Refresh
+        </Button>
+        <Button variant="outline" onClick={handleExport} isLoading={isExporting} disabled={!selectedSection}>
+          <Download size={16} className="mr-2" /> Export CSV
         </Button>
       </div>
 

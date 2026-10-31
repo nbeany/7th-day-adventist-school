@@ -4,7 +4,8 @@ import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
-import { UserPlus } from 'lucide-react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { UserPlus, Pencil, Trash2, KeyRound } from 'lucide-react';
 
 const Guardians: React.FC = () => {
   const [guardians, setGuardians] = useState<any[]>([]);
@@ -13,16 +14,23 @@ const Guardians: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [editingGuardian, setEditingGuardian] = useState<any>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ username: string; password: string } | null>(null);
 
   const [newGuardian, setNewGuardian] = useState({
     first_name: '', last_name: '', username: '', password: '', email: '',
     relationship_to_student: '', emergency_contact_number: '', occupation: ''
   });
 
-  const fetchGuardians = async () => {
+  const [editData, setEditData] = useState({
+    first_name: '', last_name: '', email: '', phone_number: '',
+    relationship_to_student: '', emergency_contact_number: '', occupation: ''
+  });
+
+  const fetchGuardians = async (search = '') => {
     setIsLoading(true);
     try {
-      const response = await api.get('/guardians/');
+      const response = await api.get(`/guardians/${search ? `?search=${encodeURIComponent(search)}` : ''}`);
       setGuardians(response.data);
     } catch (error) {
       console.error("Failed to fetch guardians", error);
@@ -31,9 +39,11 @@ const Guardians: React.FC = () => {
     }
   };
 
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
   useEffect(() => {
-    fetchGuardians();
-  }, []);
+    fetchGuardians(debouncedSearch);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (isAddModalOpen && (newGuardian.first_name || newGuardian.last_name)) {
@@ -73,7 +83,7 @@ const Guardians: React.FC = () => {
         }
       });
       setIsAddModalOpen(false);
-      fetchGuardians();
+      fetchGuardians(debouncedSearch);
     } catch (error: any) {
       const data = error.response?.data;
       if (data && data.error) {
@@ -83,6 +93,66 @@ const Guardians: React.FC = () => {
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const openEditModal = (guardian: any) => {
+    setEditingGuardian(guardian);
+    setFormError('');
+    setEditData({
+      first_name: guardian.user.first_name || '',
+      last_name: guardian.user.last_name || '',
+      email: guardian.user.email || '',
+      phone_number: guardian.user.phone_number || '',
+      relationship_to_student: guardian.relationship_to_student || '',
+      emergency_contact_number: guardian.emergency_contact_number || '',
+      occupation: guardian.occupation || ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingGuardian) return;
+    setIsSaving(true);
+    setFormError('');
+    try {
+      await api.patch(`/users/${editingGuardian.user.id}/`, {
+        first_name: editData.first_name,
+        last_name: editData.last_name,
+        email: editData.email,
+        phone_number: editData.phone_number
+      });
+      await api.patch(`/guardians/${editingGuardian.id}/`, {
+        relationship_to_student: editData.relationship_to_student,
+        emergency_contact_number: editData.emergency_contact_number,
+        occupation: editData.occupation
+      });
+      setEditingGuardian(null);
+      fetchGuardians(debouncedSearch);
+    } catch (error: any) {
+      const data = error.response?.data;
+      setFormError(data ? Object.values(data).flat().join(' ') : 'Failed to save changes.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteGuardian = async (guardian: any) => {
+    if (!window.confirm(`Delete ${guardian.user.first_name} ${guardian.user.last_name}? This also removes their links to any students, and cannot be undone.`)) return;
+    try {
+      await api.delete(`/users/${guardian.user.id}/`);
+      fetchGuardians(debouncedSearch);
+    } catch (error) {
+      alert('Failed to delete guardian.');
+    }
+  };
+
+  const handleResetPassword = async (guardian: any) => {
+    if (!window.confirm(`Reset the password for ${guardian.user.username}? They'll be required to set a new one on next login.`)) return;
+    try {
+      const res = await api.post(`/users/${guardian.user.id}/reset_password/`);
+      setResetPasswordResult({ username: guardian.user.username, password: res.data.temporary_password });
+    } catch (error) {
+      alert('Failed to reset password.');
     }
   };
 
@@ -110,13 +180,8 @@ const Guardians: React.FC = () => {
         <div className="p-8 text-center text-muted-foreground">Loading guardians...</div>
       ) : (
         <div className="animate-fade-in">
-          <Table columns={['Name', 'Email', 'Relationship', 'Emergency Contact', 'Occupation', 'Linked Students']}>
-            {guardians.filter(guardian => {
-              const q = searchQuery.toLowerCase();
-              return guardian.user.first_name.toLowerCase().includes(q) ||
-                     guardian.user.last_name.toLowerCase().includes(q) ||
-                     (guardian.user.email || '').toLowerCase().includes(q);
-            }).map((guardian) => (
+          <Table columns={['Name', 'Email', 'Relationship', 'Emergency Contact', 'Occupation', 'Linked Students', '']}>
+            {guardians.map((guardian) => (
               <tr key={guardian.id} className="transition-colors hover:bg-muted/50">
                 <td className="p-4 font-medium">{guardian.user.first_name} {guardian.user.last_name}</td>
                 <td className="p-4 text-muted-foreground">{guardian.user.email}</td>
@@ -137,11 +202,24 @@ const Guardians: React.FC = () => {
                     <span className="text-xs italic text-muted-foreground">No students linked</span>
                   )}
                 </td>
+                <td className="p-4 text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button variant="ghost" className="px-2" title="Edit" onClick={() => openEditModal(guardian)}>
+                      <Pencil size={14} />
+                    </Button>
+                    <Button variant="ghost" className="px-2" title="Reset Password" onClick={() => handleResetPassword(guardian)}>
+                      <KeyRound size={14} />
+                    </Button>
+                    <Button variant="ghost" className="px-2 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => handleDeleteGuardian(guardian)}>
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                </td>
               </tr>
             ))}
             {guardians.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                <td colSpan={7} className="p-8 text-center text-muted-foreground">
                   No guardian profiles found. Click "Register Guardian" to add one.
                 </td>
               </tr>
@@ -189,6 +267,59 @@ const Guardians: React.FC = () => {
         <div className="flex justify-end gap-3 pt-6">
           <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
           <Button variant="primary" onClick={handleAddGuardian} isLoading={isSaving}>Register Guardian</Button>
+        </div>
+      </Modal>
+
+      {/* Edit Guardian Modal */}
+      <Modal isOpen={!!editingGuardian} onClose={() => setEditingGuardian(null)} title="Edit Guardian">
+        {formError && (
+          <div className="p-3 mb-4 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{formError}</div>
+        )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="First Name" value={editData.first_name} onChange={(e) => setEditData({...editData, first_name: e.target.value})} />
+            <Input label="Last Name" value={editData.last_name} onChange={(e) => setEditData({...editData, last_name: e.target.value})} />
+          </div>
+          <Input label="Email" type="email" value={editData.email} onChange={(e) => setEditData({...editData, email: e.target.value})} />
+          <hr className="my-2 border-border" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col w-full">
+              <label className="mb-1.5 text-sm font-medium text-foreground">Relationship</label>
+              <select className="flex w-full px-3 py-2 text-sm transition-colors bg-input border rounded-md border-border text-foreground" value={editData.relationship_to_student} onChange={(e) => setEditData({...editData, relationship_to_student: e.target.value})}>
+                <option value="">Select...</option>
+                <option value="Father">Father</option>
+                <option value="Mother">Mother</option>
+                <option value="Uncle">Uncle</option>
+                <option value="Aunt">Aunt</option>
+                <option value="Grandparent">Grandparent</option>
+                <option value="Sibling">Sibling</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <Input label="Emergency Contact Number" value={editData.emergency_contact_number} onChange={(e) => setEditData({...editData, emergency_contact_number: e.target.value})} placeholder="+251..." />
+          </div>
+          <Input label="Occupation" value={editData.occupation} onChange={(e) => setEditData({...editData, occupation: e.target.value})} />
+        </div>
+        <div className="flex justify-end gap-3 pt-6">
+          <Button variant="ghost" onClick={() => setEditingGuardian(null)}>Cancel</Button>
+          <Button variant="primary" onClick={handleSaveEdit} isLoading={isSaving}>Save Changes</Button>
+        </div>
+      </Modal>
+
+      {/* Reset Password Result */}
+      <Modal isOpen={!!resetPasswordResult} onClose={() => setResetPasswordResult(null)} title="Password Reset">
+        {resetPasswordResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Share this temporary password with <strong className="text-foreground">{resetPasswordResult.username}</strong> securely. They'll be required to set a new one the next time they log in.
+            </p>
+            <div className="p-3 font-mono text-sm text-center border rounded-md bg-muted select-all">
+              {resetPasswordResult.password}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end pt-4">
+          <Button variant="primary" onClick={() => setResetPasswordResult(null)}>Done</Button>
         </div>
       </Modal>
     </div>

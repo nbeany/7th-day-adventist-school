@@ -1,0 +1,111 @@
+# Production compose: no bind mounts, no dev-server overrides - the
+# backend image's own entrypoint/CMD run migrations then gunicorn, and the
+# frontend image serves its prebuilt static bundle through nginx. Caddy
+# terminates TLS (automatic Let's Encrypt certs from DOMAIN/CADDY_ACME_EMAIL)
+# and is the only service with a port exposed to the host.
+#
+# Usage:
+#   cp .env.production.example .env.production   # fill in real values
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# --env-file is required (not just `cp .env.production .env`): Compose only
+# auto-loads a file literally named `.env`, and .env.production is also
+# used as-is by the backend/backup containers via env_file: below.
+#
+# See DEPLOYMENT.md for the full first-time setup (DNS, secrets, backups).
+
+# Explicit project name: without this, Compose derives it from the
+# directory name ("school"), which is exactly what docker-compose.yml (the
+# dev stack) also resolves to - meaning the two would share the same
+# network and volumes (including postgres_data!) if ever run on the same
+# host. This keeps them fully separate.
+name: school-prod
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_NAME:?set POSTGRES_NAME}
+      - POSTGRES_USER=${POSTGRES_USER:?set POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No published port: only other containers on this network can reach it.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./.env.production
+    volumes:
+      - static_data:/app/static
+      - media_data:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: https://${DOMAIN}/api
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN to your public hostname}
+      - CADDY_ACME_EMAIL=${CADDY_ACME_EMAIL:?set CADDY_ACME_EMAIL for Let's Encrypt}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - static_data:/srv/static:ro
+      - media_data:/srv/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+  backup:
+    image: postgres:15
+    restart: unless-stopped
+    entrypoint: ["sh", "/scripts/backup-loop.sh"]
+    env_file:
+      - ./.env.production
+    volumes:
+      - ./backend/scripts:/scripts:ro
+      - db_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  static_data:
+  media_data:
+  caddy_data:
+  caddy_config:
+  db_backups:

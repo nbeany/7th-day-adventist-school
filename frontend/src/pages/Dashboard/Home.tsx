@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Users, GraduationCap, CalendarDays, DollarSign, Activity, RefreshCw } from 'lucide-react';
 import api from '../../api/axios';
 import Button from '../../components/ui/Button';
+import TrendChart from '../../components/ui/TrendChart';
 import { Link } from 'react-router-dom';
 import NoticeBoard from '../../components/NoticeBoard';
 
@@ -182,21 +183,36 @@ const Home: React.FC = () => {
                 </div>
                 
                 <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
-                  <h3 className="mb-2 text-lg font-semibold tracking-tight">System Status</h3>
-                  <p className="text-sm text-muted-foreground mb-4">All modules are active and running.</p>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm"><div className="w-2 h-2 rounded-full bg-success"></div> Academic Engine (Online)</div>
-                    <div className="flex items-center gap-2 text-sm"><div className="w-2 h-2 rounded-full bg-success"></div> SIS Module (Online)</div>
-                    <div className="flex items-center gap-2 text-sm"><div className="w-2 h-2 rounded-full bg-success"></div> Finance Engine (Online)</div>
-                    <div className="flex items-center gap-2 text-sm"><div className="w-2 h-2 rounded-full bg-success"></div> Redis Cache (Active)</div>
-                  </div>
+                  <h3 className="mb-4 text-lg font-semibold tracking-tight">Attendance, Last 14 Days</h3>
+                  <TrendChart
+                    data={(stats.attendance_trend || []).map((p: any) => ({
+                      label: new Date(p.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                      value: p.rate
+                    }))}
+                    formatValue={(v) => `${v}%`}
+                    barClassName="bg-success"
+                    emptyLabel="No attendance recorded in the last 14 days."
+                  />
                 </div>
               </div>
             </div>
-            
+
             <div className="md:col-span-1">
               <NoticeBoard />
             </div>
+          </div>
+
+          <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold tracking-tight">Fee Collection, Last 6 Months</h3>
+            <TrendChart
+              data={(stats.payment_trend || []).map((p: any) => ({
+                label: new Date(p.month + '-01T00:00:00').toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
+                value: p.total
+              }))}
+              formatValue={(v) => `ETB ${v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              barClassName="bg-warning"
+              emptyLabel="No payments recorded in the last 6 months."
+            />
           </div>
         </>
       ) : null}

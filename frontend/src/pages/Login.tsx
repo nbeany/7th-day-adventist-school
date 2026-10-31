@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axios';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { GraduationCap } from 'lucide-react';
@@ -26,7 +26,7 @@ const Login: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/token/', {
+      const response = await api.post('/token/', {
         username,
         password
       });

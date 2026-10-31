@@ -11,22 +11,53 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
+load_dotenv(BASE_DIR / '.env')
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-i0cu+jpbc0rwqh+g%t+jknmujs766fl1_7=0!qqzf!%@vvu7r0'
+# No hardcoded fallback: the app refuses to start without a real key,
+# except in DEBUG mode where a throwaway key is generated for convenience.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = []
+if not SECRET_KEY:
+    if DEBUG:
+        import warnings
+        from django.core.management.utils import get_random_secret_key
+        warnings.warn(
+            "DJANGO_SECRET_KEY is not set; using a throwaway key for this "
+            "process only. Set DJANGO_SECRET_KEY in backend/.env."
+        )
+        SECRET_KEY = get_random_secret_key()
+    else:
+        raise RuntimeError(
+            "DJANGO_SECRET_KEY environment variable must be set when DEBUG=False."
+        )
+
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+
+# Production security headers. Caddy (see ../Caddyfile) terminates TLS and
+# reverse-proxies to this app over plain HTTP inside the Docker network, so
+# Django needs SECURE_PROXY_SSL_HEADER to know the original request was
+# HTTPS - without it, SECURE_SSL_REDIRECT would redirect-loop forever.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
 
 
 # Application definition
@@ -40,8 +71,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Third party apps
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     # Local apps
+    'core',
     'users',
     'schools',
     'academics',
@@ -50,6 +83,7 @@ INSTALLED_APPS = [
     'grades',
     'finance',
     'timetable',
+    'audit',
 ]
 
 MIDDLEWARE = [
@@ -154,11 +188,38 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-    )
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsSetPagination',
+    'PAGE_SIZE': 100,
+    # Deliberately no DEFAULT_THROTTLE_CLASSES: that would put every single
+    # API request behind a Redis lookup. Instead only the three endpoints
+    # worth rate-limiting (login, password change, bulk upload) declare
+    # their own throttle_classes and draw their rate from the scopes below.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/min',
+        'password_change': '10/min',
+        'bulk_upload': '5/min',
+    },
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
 }
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True # Change in production
+# In DEBUG, default to the local Vite dev server; in production a real
+# origin list must be supplied via CORS_ALLOWED_ORIGINS (comma-separated).
+_cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if _cors_origins:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+elif DEBUG:
+    CORS_ALLOWED_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
+else:
+    CORS_ALLOWED_ORIGINS = []
 
 # Cache (Redis)
 CACHES = {
@@ -167,6 +228,93 @@ CACHES = {
         "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # A Redis blip must not take down login/password-change/bulk-upload
+            # (which read this cache for throttling) or the dashboard stats
+            # endpoint - fail open (skip caching/throttling) instead of 500ing.
+            "IGNORE_EXCEPTIONS": True,
         }
     }
 }
+
+# Logging - deliberately console-only. Containers are ephemeral and most
+# hosting platforms (and `docker compose logs`/`docker logs`) already
+# collect stdout, so a rotating file handler here would just be a second,
+# usually-forgotten place logs go missing from. Ship stdout to whatever log
+# aggregator the host provides instead of building one in-app.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} - {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        # Unhandled view exceptions - the ones that would otherwise 500
+        # silently with nothing to debug from afterward.
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+# Error tracking (Sentry) - opt-in via SENTRY_DSN. Nothing below runs, and
+# sentry_sdk is never imported, unless a real DSN is configured, so this is
+# a no-op in local dev.
+SENTRY_DSN = os.environ.get('SENTRY_DSN')
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.environ.get('SENTRY_ENVIRONMENT', 'production'),
+        integrations=[
+            DjangoIntegration(),
+            LoggingIntegration(level=None, event_level='ERROR'),
+        ],
+        traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
+        send_default_pii=False,
+    )
+
+# File storage. Local disk by default (fine for local dev); set
+# AWS_STORAGE_BUCKET_NAME to switch every FileField/ImageField (school
+# logos, signatures, announcement images) over to S3-compatible storage -
+# AWS S3 itself, or any S3-compatible provider (DigitalOcean Spaces,
+# Cloudflare R2, MinIO, etc.) via AWS_S3_ENDPOINT_URL.
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
+if AWS_STORAGE_BUCKET_NAME:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+    AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+    AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL') or None
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = os.environ.get('AWS_S3_PRIVATE_FILES', 'False') == 'True'

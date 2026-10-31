@@ -57,7 +57,7 @@ const Attendance: React.FC = () => {
       
       // We would ideally need the student names. The viewset for student-enrollments doesn't return full student object, 
       // but let's assume we can fetch students directly or we fetch all students and filter.
-      const studentsRes = await api.get('/students/');
+      const studentsRes = await api.get('/students/?page_size=1000');
       const studentsInSection = studentsRes.data.filter((s: any) => 
         s.enrollments.some((e: any) => e.section.toString() === selectedSection && e.status === 'ACTIVE')
       );

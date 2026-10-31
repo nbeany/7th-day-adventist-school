@@ -7,6 +7,7 @@ interface User {
   user_id: number;
   username: string;
   role: string;
+  must_change_password?: boolean;
 }
 
 interface AuthContextType {
@@ -14,6 +15,7 @@ interface AuthContextType {
   login: (access: string, refresh: string) => void;
   logout: () => void;
   isAuthenticated: boolean;
+  clearMustChangePassword: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,8 +51,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     navigate('/login');
   };
 
+  // The `must_change_password` claim only clears on the next login/token
+  // refresh; call this right after a successful password change so the
+  // forced-change prompt doesn't linger for the rest of the session.
+  const clearMustChangePassword = () => {
+    setUser((prev) => (prev ? { ...prev, must_change_password: false } : prev));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, clearMustChangePassword }}>
       {children}
     </AuthContext.Provider>
   );

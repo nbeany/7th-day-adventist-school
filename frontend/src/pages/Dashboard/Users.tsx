@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
-import { Upload, Plus } from 'lucide-react';
+import { Upload, Plus, Pencil, Trash2, KeyRound } from 'lucide-react';
 
 interface User {
   id: number;
@@ -13,6 +15,7 @@ interface User {
   first_name: string;
   last_name: string;
   role: string;
+  phone_number?: string;
 }
 
 const roleStyles: Record<string, string> = {
@@ -23,6 +26,7 @@ const roleStyles: Record<string, string> = {
 };
 
 const Users: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -32,14 +36,18 @@ const Users: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ username: string; password: string } | null>(null);
 
   const [newUser, setNewUser] = useState({
     username: '', email: '', first_name: '', last_name: '', role: 'TEACHER', password: '', phone_number: ''
   });
 
-  const fetchUsers = async () => {
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
+  const fetchUsers = async (search = '') => {
     try {
-      const response = await api.get('/users/');
+      const response = await api.get(`/users/${search ? `?search=${encodeURIComponent(search)}` : ''}`);
       setUsers(response.data);
     } catch (error) {
       console.error("Failed to fetch users", error);
@@ -47,8 +55,8 @@ const Users: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    fetchUsers(debouncedSearch);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (isAddModalOpen && (newUser.first_name || newUser.last_name)) {
@@ -76,7 +84,7 @@ const Users: React.FC = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setUploadStatus(response.data);
-      fetchUsers();
+      fetchUsers(debouncedSearch);
     } catch (error: any) {
       setUploadStatus({ errors: error.response?.data?.errors || [error.message] });
     } finally {
@@ -84,28 +92,68 @@ const Users: React.FC = () => {
     }
   };
 
+  const openAddModal = () => {
+    setEditingId(null);
+    setFormError('');
+    setNewUser({ username: '', email: '', first_name: '', last_name: '', role: 'TEACHER', password: '', phone_number: '' });
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (u: User) => {
+    setEditingId(u.id);
+    setFormError('');
+    setNewUser({ username: u.username, email: u.email || '', first_name: u.first_name, last_name: u.last_name, role: u.role, password: '', phone_number: u.phone_number || '' });
+    setIsAddModalOpen(true);
+  };
+
   const handleAddUser = async () => {
-    if (!newUser.username || !newUser.password) {
+    if (!editingId && (!newUser.username || !newUser.password)) {
       setFormError('Username and password are required.');
       return;
     }
     setIsSaving(true);
     setFormError('');
     try {
-      await api.post('/users/', newUser);
+      if (editingId) {
+        const { password, ...editablePayload } = newUser;
+        await api.patch(`/users/${editingId}/`, editablePayload);
+      } else {
+        await api.post('/users/', newUser);
+      }
       setIsAddModalOpen(false);
+      setEditingId(null);
       setNewUser({ username: '', email: '', first_name: '', last_name: '', role: 'TEACHER', password: '', phone_number: '' });
-      fetchUsers();
+      fetchUsers(debouncedSearch);
     } catch (error: any) {
       const data = error.response?.data;
       if (data) {
         const msgs = Object.values(data).flat().join(' ');
         setFormError(msgs);
       } else {
-        setFormError('Failed to create user.');
+        setFormError('Failed to save user.');
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async (u: User) => {
+    if (!window.confirm(`Delete ${u.first_name} ${u.last_name} (${u.username})? This also removes all their related records (profile, grades, attendance, etc.) and cannot be undone.`)) return;
+    try {
+      await api.delete(`/users/${u.id}/`);
+      fetchUsers(debouncedSearch);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Failed to delete user.');
+    }
+  };
+
+  const handleResetPassword = async (u: User) => {
+    if (!window.confirm(`Reset the password for ${u.username}? They'll be required to set a new one on next login.`)) return;
+    try {
+      const res = await api.post(`/users/${u.id}/reset_password/`);
+      setResetPasswordResult({ username: u.username, password: res.data.temporary_password });
+    } catch (error) {
+      alert('Failed to reset password.');
     }
   };
 
@@ -129,39 +177,47 @@ const Users: React.FC = () => {
           <Button variant="ghost" onClick={() => setIsBulkModalOpen(true)}>
             <Upload size={16} /> Bulk Upload
           </Button>
-          <Button variant="primary" onClick={() => setIsAddModalOpen(true)}>
+          <Button variant="primary" onClick={openAddModal}>
             <Plus size={16} /> Add User
           </Button>
         </div>
       </div>
 
       <div className="mb-4">
-        <Input 
-          placeholder="Search by name, username, email, or role..." 
-          value={searchQuery} 
+        <Input
+          placeholder="Search by name, username, email, or role..."
+          value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
-      <Table columns={['Username', 'Name', 'Email', 'Role']}>
-        {users.filter(u => {
-          const q = searchQuery.toLowerCase();
-          return u.first_name.toLowerCase().includes(q) ||
-                 u.last_name.toLowerCase().includes(q) ||
-                 u.username.toLowerCase().includes(q) ||
-                 (u.email || '').toLowerCase().includes(q) ||
-                 u.role.toLowerCase().includes(q);
-        }).map((u) => (
+      <Table columns={['Username', 'Name', 'Email', 'Role', '']}>
+        {users.map((u) => (
           <tr key={u.id} className="transition-colors hover:bg-muted/50">
             <td className="p-4 font-medium">{u.username}</td>
             <td className="p-4">{u.first_name} {u.last_name}</td>
             <td className="p-4 text-muted-foreground">{u.email}</td>
             <td className="p-4">{getRoleBadge(u.role)}</td>
+            <td className="p-4 text-right">
+              <div className="flex justify-end gap-1">
+                <Button variant="ghost" className="px-2" title="Edit" onClick={() => openEditModal(u)}>
+                  <Pencil size={14} />
+                </Button>
+                <Button variant="ghost" className="px-2" title="Reset Password" onClick={() => handleResetPassword(u)}>
+                  <KeyRound size={14} />
+                </Button>
+                {currentUser?.user_id !== u.id && (
+                  <Button variant="ghost" className="px-2 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => handleDeleteUser(u)}>
+                    <Trash2 size={14} />
+                  </Button>
+                )}
+              </div>
+            </td>
           </tr>
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={4} className="p-8 text-center text-muted-foreground">
+            <td colSpan={5} className="p-8 text-center text-muted-foreground">
               No users found. Add users manually or use CSV upload.
             </td>
           </tr>
@@ -193,8 +249,8 @@ const Users: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Add User Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setFormError(''); }} title="Add New User">
+      {/* Add / Edit User Modal */}
+      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setFormError(''); }} title={editingId ? 'Edit User' : 'Add New User'}>
         {formError && (
           <div className="p-3 mb-4 text-sm border rounded-md bg-destructive/10 text-destructive border-destructive/20">{formError}</div>
         )}
@@ -205,7 +261,9 @@ const Users: React.FC = () => {
           </div>
           <Input label="Username" value={newUser.username} onChange={(e) => setNewUser({...newUser, username: e.target.value})} placeholder="johndoe" required />
           <Input label="Email" type="email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} placeholder="john@school.com" />
-          <Input label="Password" type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" required />
+          {!editingId && (
+            <Input label="Password" type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} placeholder="••••••••" required />
+          )}
           <Input label="Phone Number" value={newUser.phone_number} onChange={(e) => setNewUser({...newUser, phone_number: e.target.value})} placeholder="+251..." />
           <div className="flex flex-col w-full mb-4">
             <label className="mb-1.5 text-sm font-medium text-foreground">Role</label>
@@ -218,10 +276,30 @@ const Users: React.FC = () => {
               <option value="ADMIN">Admin</option>
             </select>
           </div>
+          {editingId && (
+            <p className="text-xs text-muted-foreground -mt-2">To change this user's password, use the reset-password action instead.</p>
+          )}
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-          <Button variant="primary" onClick={handleAddUser} isLoading={isSaving}>Create User</Button>
+          <Button variant="primary" onClick={handleAddUser} isLoading={isSaving}>{editingId ? 'Save Changes' : 'Create User'}</Button>
+        </div>
+      </Modal>
+
+      {/* Reset Password Result */}
+      <Modal isOpen={!!resetPasswordResult} onClose={() => setResetPasswordResult(null)} title="Password Reset">
+        {resetPasswordResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Share this temporary password with <strong className="text-foreground">{resetPasswordResult.username}</strong> securely. They'll be required to set a new one the next time they log in.
+            </p>
+            <div className="p-3 font-mono text-sm text-center border rounded-md bg-muted select-all">
+              {resetPasswordResult.password}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end pt-4">
+          <Button variant="primary" onClick={() => setResetPasswordResult(null)}>Done</Button>
         </div>
       </Modal>
     </div>

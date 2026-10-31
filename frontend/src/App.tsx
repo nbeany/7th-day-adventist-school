@@ -18,6 +18,7 @@ import Fees from './pages/Dashboard/Fees';
 import Invoices from './pages/Dashboard/Invoices';
 import Academics from './pages/Dashboard/Academics';
 import Settings from './pages/Dashboard/Settings';
+import AuditLog from './pages/Dashboard/AuditLog';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
   const { user, isAuthenticated } = useAuth();
@@ -46,13 +47,14 @@ function App() {
           <Route path="/attendance" element={<ProtectedRoute allowedRoles={['ADMIN', 'TEACHER']}><Attendance /></ProtectedRoute>} />
           <Route path="/attendance-history" element={<ProtectedRoute allowedRoles={['ADMIN', 'TEACHER']}><AttendanceHistory /></ProtectedRoute>} />
           <Route path="/gradebook" element={<ProtectedRoute allowedRoles={['ADMIN', 'TEACHER']}><Gradebook /></ProtectedRoute>} />
-          <Route path="/report-cards" element={<ProtectedRoute allowedRoles={['ADMIN', 'STUDENT', 'PARENT']}><ReportCards /></ProtectedRoute>} />
+          <Route path="/report-cards" element={<ProtectedRoute allowedRoles={['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']}><ReportCards /></ProtectedRoute>} />
           <Route path="/my-grades" element={<ProtectedRoute allowedRoles={['STUDENT', 'PARENT']}><MyGrades /></ProtectedRoute>} />
           <Route path="/timetable" element={<ProtectedRoute allowedRoles={['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']}><Timetable /></ProtectedRoute>} />
           <Route path="/fees" element={<ProtectedRoute allowedRoles={['ADMIN']}><Fees /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute allowedRoles={['ADMIN', 'PARENT']}><Invoices /></ProtectedRoute>} />
           <Route path="/academics" element={<ProtectedRoute allowedRoles={['ADMIN']}><Academics /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['ADMIN']}><Settings /></ProtectedRoute>} />
+          <Route path="/audit-log" element={<ProtectedRoute allowedRoles={['ADMIN']}><AuditLog /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </Router>
